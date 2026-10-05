@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { HOME } from '../content/home';
 import type { Lang } from '../content/i18n';
+import { NOINDEX } from '../content/site';
 import { languagePairs, type Page } from './content';
 
 const OG_IMAGE = { url: '/og-image.png', width: 1200, height: 1200, alt: 'NoteForWork — physician-signed doctor’s notes in 60 minutes' };
@@ -49,7 +50,7 @@ export const rootMetadata = (lang: Lang): Metadata => ({
   title: HOME[lang].meta.title,
   description: HOME[lang].meta.description,
   applicationName: 'NoteForWork',
-  robots: { index: true, follow: true, 'max-image-preview': 'large' },
+  robots: NOINDEX ? { index: false, follow: false } : { index: true, follow: true, 'max-image-preview': 'large' },
   formatDetection: { telephone: false },
   ...social(lang, HOME[lang].meta.title, HOME[lang].meta.description, lang === 'es' ? '/es' : '/'),
 });
