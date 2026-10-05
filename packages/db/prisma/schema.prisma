@@ -36,7 +36,8 @@ enum Role {
 model User {
   id           String         @id @default(uuid())
   email        String         @unique
-  role         Role
+  /// One person can hold several roles (e.g. the medical director is PHYSICIAN + ADMIN).
+  roles        Role[]         @default([])
   /// scrypt hash ("scrypt$N$r$p$salt$hash"). Staff only; patients sign in with email codes.
   passwordHash String?
   displayName  String?
@@ -248,6 +249,11 @@ model Review {
   clinicalNote  String? /// PHI — internal, never printed on the note
   attestation   String?
   decidedAt     DateTime?
+  /// The claiming physician holds the case until this time; after it, the case returns to the queue.
+  lockExpiresAt DateTime?
+  /// Patient-facing explanation sent with a decline (optional, physician-written).
+  declineMessage String?
+  revokedReason String?
 }
 
 // ───────────── Notes & verification ─────────────
@@ -268,7 +274,7 @@ model Note {
   intakeId     String?       @unique // null for legacy imports without an intake
   intake       Intake?       @relation(fields: [intakeId], references: [id])
   noteId       String        @unique // NFW-XXXX-XXXX-XXXX
-  qrTokenHash  String        @unique // sha256 of the QR token; the token itself is never stored
+  qrTokenHash  String?       @unique // sha256 of the QR token; set when the PDF is rendered (token never stored)
   issuingEntity IssuingEntity
   physicianId  String
   physician    Physician     @relation(fields: [physicianId], references: [id])
@@ -279,6 +285,8 @@ model Note {
   absenceEnd   DateTime      @db.Date
   pdfKey       String? // S3 object key
   status       NoteStatus    @default(VALID)
+  revokedAt    DateTime?
+  revokedReason String?
   supersedesId String?       @unique
   supersedes   Note?         @relation("Correction", fields: [supersedesId], references: [id])
   supersededBy Note?         @relation("Correction")

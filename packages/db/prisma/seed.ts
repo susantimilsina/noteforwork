@@ -27,10 +27,14 @@ async function main() {
   }
 
   // Fake physician for local testing (not a real person, fake NPI/licence).
+  // Fake test physician. Login password comes from the git-ignored .env (PHYSICIAN_PASSWORD).
+  const physPassword = process.env.PHYSICIAN_PASSWORD;
+  if (physPassword && physPassword.length < 12) throw new Error('PHYSICIAN_PASSWORD must be at least 12 characters');
+  const physHash = physPassword ? await hashPassword(physPassword) : undefined;
   const user = await prisma.user.upsert({
     where: { email: 'dr.test@example.com' },
-    update: {},
-    create: { email: 'dr.test@example.com', role: 'PHYSICIAN' },
+    update: { roles: ['PHYSICIAN'], displayName: 'Test Physician', ...(physHash && { passwordHash: physHash }) },
+    create: { email: 'dr.test@example.com', roles: ['PHYSICIAN'], displayName: 'Test Physician', passwordHash: physHash },
   });
   const physician = await prisma.physician.upsert({
     where: { userId: user.id },
@@ -59,8 +63,8 @@ async function main() {
     const passwordHash = await hashPassword(adminPassword);
     await prisma.user.upsert({
       where: { email: adminEmail },
-      update: { passwordHash, role: 'ADMIN', disabled: false },
-      create: { email: adminEmail, role: 'ADMIN', passwordHash, displayName: 'Local Admin' },
+      update: { passwordHash, roles: ['ADMIN'], disabled: false },
+      create: { email: adminEmail, roles: ['ADMIN'], passwordHash, displayName: 'Local Admin' },
     });
   }
 

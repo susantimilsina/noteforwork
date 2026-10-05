@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert } from '@nfw/ui/alert';
 import { Button } from '@nfw/ui/button';
 import { Card } from '@nfw/ui/card';
-import { adminApi } from '../../../../admin/api';
+import { homeFor, staffApi, type Me } from '../../../../staff/api';
 
 function LoginForm() {
   const router = useRouter();
@@ -20,9 +20,9 @@ function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      await adminApi('/auth/login', { body: { email, password } });
-      // Only allow redirects back into the admin panel.
-      router.replace(next?.startsWith('/admin') ? next : '/admin');
+      const me = await staffApi<Me>('/staff/auth/login', { body: { email, password } });
+      // Only allow redirects back into staff areas.
+      router.replace(next && /^\/(admin|physician)(\/|$|\?)/.test(next) ? next : homeFor(me));
     } catch (err) {
       const status = (err as { status?: number }).status;
       setError(status === 429 ? 'Too many attempts. Wait a minute and try again.' : 'Email or password is incorrect.');
@@ -50,14 +50,14 @@ function LoginForm() {
   );
 }
 
-export default function AdminLogin() {
+export default function StaffLogin() {
   return (
     <div className="hero-glow flex min-h-dvh items-center justify-center px-5">
       <div className="w-full max-w-sm">
         <p className="font-display mb-1 text-center text-2xl" style={{ fontWeight: 400 }}>
           <span className="text-green">Note</span>ForWork
         </p>
-        <p className="mb-6 text-center text-sm text-muted">Staff sign-in</p>
+        <p className="mb-6 text-center text-sm text-muted">Staff & physician sign-in</p>
         <Suspense>
           <LoginForm />
         </Suspense>

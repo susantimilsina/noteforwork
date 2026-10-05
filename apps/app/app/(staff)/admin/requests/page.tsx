@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { adminApi, type Paged } from '../../../../admin/api';
-import { Badge, fmtDateTime, STATUS_LABEL } from '../../../../admin/format';
-import { AdminShell } from '../../../../admin/shell';
+import { adminApi, type Paged } from '../../../../staff/api';
+import { Badge, fmtDateTime, STATUS_LABEL } from '../../../../staff/format';
+import { StaffShell } from '../../../../staff/shell';
 
 interface Row {
   id: string;
@@ -146,10 +146,10 @@ function Requests() {
 
 export default function RequestsPage() {
   return (
-    <AdminShell>
+    <StaffShell area="admin">
       <Suspense>
         <Requests />
       </Suspense>
-    </AdminShell>
+    </StaffShell>
   );
 }

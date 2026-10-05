@@ -3,9 +3,9 @@
 import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { adminApi, type Paged } from '../../../../admin/api';
-import { Badge, ENTITY_LABEL, fmtDate, fmtDateTime, minutesBetween } from '../../../../admin/format';
-import { AdminShell } from '../../../../admin/shell';
+import { adminApi, type Paged } from '../../../../staff/api';
+import { Badge, ENTITY_LABEL, fmtDate, fmtDateTime, minutesBetween } from '../../../../staff/format';
+import { StaffShell } from '../../../../staff/shell';
 
 interface NoteRow {
   id: string;
@@ -155,10 +155,10 @@ function Notes() {
 
 export default function NotesPage() {
   return (
-    <AdminShell>
+    <StaffShell area="admin">
       <Suspense>
         <Notes />
       </Suspense>
-    </AdminShell>
+    </StaffShell>
   );
 }

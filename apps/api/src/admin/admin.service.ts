@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { IntakeStatus, Prisma, User } from '@nfw/db';
 import { AuditService } from '../common/audit.service';
 import { PrismaService } from '../common/prisma.service';
@@ -130,5 +130,91 @@ export class AdminService {
       }),
     ]);
     return { total, page: q.page, pageSize: q.pageSize, rows };
+  }
+
+  /** Live queue for oversight: everything paid but not decided, soonest deadline first. */
+  async queue() {
+    const now = Date.now();
+    const rows = await this.prisma.client.intake.findMany({
+      where: { status: { in: ['PAYMENT_AUTHORIZED', 'IN_QUEUE', 'IN_REVIEW'] } },
+      orderBy: { slaDeadline: 'asc' },
+      select: {
+        id: true,
+        publicRef: true,
+        status: true,
+        stateCode: true,
+        submittedAt: true,
+        slaDeadline: true,
+        review: { select: { lockExpiresAt: true, claimedAt: true, physician: { select: { displayName: true, degree: true } } } },
+      },
+    });
+    // States with waiting cases but no physician holding an active license there.
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    const covered = new Set(
+      (await this.prisma.client.license.findMany({ where: { expiresAt: { gte: today }, physician: { active: true } }, select: { stateCode: true } })).map((l) => l.stateCode),
+    );
+    return {
+      uncoveredStates: [...new Set(rows.map((r) => r.stateCode))].filter((s) => !covered.has(s)),
+      rows: rows.map((r) => {
+        const lockActive = (r.review?.lockExpiresAt?.getTime() ?? 0) >= now;
+        return {
+          ...r,
+          minutesLeft: r.slaDeadline ? Math.round((r.slaDeadline.getTime() - now) / 60_000) : null,
+          reviewer: r.status === 'IN_REVIEW' && lockActive && r.review ? `Dr. ${r.review.physician.displayName}, ${r.review.physician.degree}` : null,
+          lockExpired: r.status === 'IN_REVIEW' && !lockActive,
+        };
+      }),
+    };
+  }
+
+  /** Physicians with license expiry warnings and workload. */
+  async physicians() {
+    const today = Date.now();
+    const since30 = new Date(today - 30 * 86_400_000);
+    const list = await this.prisma.client.physician.findMany({
+      orderBy: { displayName: 'asc' },
+      include: {
+        user: { select: { email: true, lastLoginAt: true, disabled: true } },
+        licenses: { orderBy: { stateCode: 'asc' } },
+        _count: { select: { notes: true } },
+      },
+    });
+    const recent = await this.prisma.client.note.groupBy({ by: ['physicianId'], where: { issuedAt: { gte: since30 } }, _count: { _all: true } });
+    const declined = await this.prisma.client.review.groupBy({ by: ['physicianId'], where: { decision: 'DECLINED', decidedAt: { gte: since30 } }, _count: { _all: true } });
+    const count = (rows: { physicianId: string; _count: { _all: number } }[], id: string) => rows.find((r) => r.physicianId === id)?._count._all ?? 0;
+    return list.map((p) => ({
+      id: p.id,
+      displayName: p.displayName,
+      degree: p.degree,
+      npi: p.npi,
+      active: p.active,
+      email: p.user.email,
+      lastLoginAt: p.user.lastLoginAt,
+      notesTotal: p._count.notes,
+      notes30d: count(recent, p.id),
+      declined30d: count(declined, p.id),
+      licenses: p.licenses.map((l) => ({
+        stateCode: l.stateCode,
+        number: l.number,
+        expiresAt: l.expiresAt,
+        daysLeft: Math.floor((l.expiresAt.getTime() - today) / 86_400_000),
+      })),
+    }));
+  }
+
+  /** Revoke a note (e.g. issued in error or fraud). Verification will then show it as revoked. */
+  async revokeNote(noteId: string, reason: string, staff: User) {
+    const note = await this.prisma.client.note.findUnique({ where: { id: noteId }, select: { id: true, status: true, intakeId: true, noteId: true } });
+    if (!note) throw new NotFoundException();
+    if (note.status === 'REVOKED') throw new ConflictException({ code: 'ALREADY_REVOKED', message: 'This note is already revoked.' });
+    await this.prisma.client.note.update({ where: { id: noteId }, data: { status: 'REVOKED', revokedAt: new Date(), revokedReason: reason } });
+    await this.audit.record({
+      actorType: 'ADMIN',
+      actorId: staff.id,
+      action: 'note.revoked',
+      entity: 'Intake',
+      entityId: note.intakeId ?? note.id,
+      meta: { noteId: note.noteId, reason },
+    });
   }
 }

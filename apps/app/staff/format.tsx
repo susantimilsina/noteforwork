@@ -1,3 +1,5 @@
+import { QUESTION_IDS, type QuestionId } from '@nfw/screening';
+
 /** Shared formatting + status badges for the admin panel. */
 export const STATUS_LABEL: Record<string, string> = {
   DRAFT: 'Draft',
@@ -45,3 +47,10 @@ export const minutesBetween = (a?: string | null, b?: string | null) =>
   a && b ? Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60_000) : null;
 
 export const ENTITY_LABEL: Record<string, string> = { NOTEFORWORK: 'NoteForWork', ANYDAY_MEDICAL_CLINIC: 'Anyday Medical Clinic' };
+
+
+/** Screening answers in questionnaire order (Postgres jsonb does not preserve key order). */
+export const orderedAnswers = (answers: unknown): [QuestionId, unknown][] => {
+  const a = (answers ?? {}) as Record<string, unknown>;
+  return QUESTION_IDS.filter((q) => q in a).map((q) => [q, a[q]]);
+};

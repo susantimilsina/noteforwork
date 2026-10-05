@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { use, useEffect, useState } from 'react';
 import { QUESTIONS_EN, type QuestionId } from '@nfw/screening';
-import { adminApi } from '../../../../../admin/api';
-import { Badge, ENTITY_LABEL, fmtDate, fmtDateTime, minutesBetween } from '../../../../../admin/format';
-import { AdminShell } from '../../../../../admin/shell';
+import { orderedAnswers } from '../../../../../staff/format';
+import { adminApi } from '../../../../../staff/api';
+import { Badge, ENTITY_LABEL, fmtDate, fmtDateTime, minutesBetween } from '../../../../../staff/format';
+import { StaffShell, useMe } from '../../../../../staff/shell';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Detail = Record<string, any>;
@@ -38,17 +39,61 @@ function answerText(q: QuestionId, v: unknown) {
   return opts.find((o) => o.value === v)?.label ?? String(v);
 }
 
+function RevokeNote({ noteId, onDone }: { noteId: string; onDone: () => void }) {
+  const me = useMe();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!me.roles.includes('ADMIN')) return null;
+
+  async function revoke() {
+    setBusy(true);
+    setError(null);
+    try {
+      await adminApi(`/notes/${noteId}/revoke`, { body: { reason } });
+      onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return open ? (
+    <div className="mt-4 space-y-2 rounded-xl border border-danger/30 bg-danger-light/50 p-3">
+      <p className="text-xs text-danger">Revoking makes employer verification show this note as revoked. This cannot be undone.</p>
+      <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Reason (required, at least 10 characters)" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+      {error && <p className="text-xs text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" disabled={reason.trim().length < 10 || busy} onClick={revoke} className="rounded-lg bg-danger px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40">
+          {busy ? 'Revoking…' : 'Revoke note'}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-sm text-muted">
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button type="button" onClick={() => setOpen(true)} className="mt-4 rounded-lg border border-danger/30 px-3 py-1.5 text-sm font-semibold text-danger hover:bg-danger-light">
+      Revoke note…
+    </button>
+  );
+}
+
 export default function RequestDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [d, setD] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const load = () => adminApi<Detail>(`/intakes/${id}`).then(setD).catch((e) => setError(e.status === 404 ? 'Request not found.' : 'Could not load this request.'));
   useEffect(() => {
-    adminApi<Detail>(`/intakes/${id}`).then(setD).catch((e) => setError(e.status === 404 ? 'Request not found.' : 'Could not load this request.'));
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   return (
-    <AdminShell>
+    <StaffShell area="admin">
       <Link href="/admin/requests" className="text-sm text-muted hover:text-ink">
         ← All requests
       </Link>
@@ -136,7 +181,7 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
                     ]}
                   />
                   <dl className="mt-4 divide-y divide-border border-t border-border text-sm">
-                    {Object.entries(d.screening.answers as Record<string, unknown>).map(([q, v]) => (
+                    {orderedAnswers(d.screening.answers).map(([q, v]) => (
                       <div key={q} className="flex justify-between gap-4 py-1.5">
                         <dt className="text-muted">{QUESTIONS_EN[q as QuestionId]?.title ?? q}</dt>
                         <dd className="text-right">{answerText(q as QuestionId, v)}</dd>
@@ -176,11 +221,13 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
                     ['Issuing entity', ENTITY_LABEL[d.note.issuingEntity]],
                     ['Issued', `${fmtDateTime(d.note.issuedAt)} (${minutesBetween(d.submittedAt, d.note.issuedAt)} min after payment)`],
                     ['Delivered', fmtDateTime(d.note.deliveredAt)],
+                    ...(d.note.status === 'REVOKED' ? ([['Revoked', `${fmtDateTime(d.note.revokedAt)} — ${d.note.revokedReason}`]] as [string, string][]) : []),
                   ]}
                 />
               ) : (
                 <p className="text-sm text-muted">No note issued.</p>
               )}
+              {d.note && d.note.status !== 'REVOKED' && <RevokeNote noteId={d.note.id} onDone={load} />}
             </Section>
 
             <Section title="Audit trail">
@@ -202,6 +249,6 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
           </div>
         </>
       )}
-    </AdminShell>
+    </StaffShell>
   );
 }

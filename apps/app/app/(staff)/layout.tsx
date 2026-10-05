@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import '../globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'Admin · NoteForWork', template: '%s · Admin · NoteForWork' },
+  title: { default: 'Staff · NoteForWork', template: '%s · Staff · NoteForWork' },
   robots: { index: false, follow: false, nocache: true },
 };
 

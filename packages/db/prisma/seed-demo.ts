@@ -65,7 +65,9 @@ async function main() {
   const now = Date.now();
   for (const [i, plan] of PLANS.entries()) {
     const first = FIRST[i % FIRST.length]!;
-    const created = new Date(now - minutes(60 * 9 * i + 37 * i));
+    // Waiting cases are recent (so the live queue shows realistic countdowns); the rest spread over ~7 days.
+    const waiting = ['PAYMENT_AUTHORIZED', 'IN_QUEUE', 'IN_REVIEW'].includes(plan.status);
+    const created = new Date(now - (waiting ? minutes(8 + 11 * (i % 4)) : minutes(60 * 9 * i + 37 * i)));
     const patient = await prisma.patient.create({
       data: {
         email: `${first.toLowerCase()}.${i}@${DEMO_DOMAIN}`,
