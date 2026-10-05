@@ -1,0 +1,5 @@
+{
+  "extends": "@nfw/config/tsconfig.base.json",
+  "compilerOptions": { "types": ["node"], "emitDeclarationOnly": true, "outDir": "dist", "rootDir": "src" },
+  "include": ["src"]
+}

@@ -1,0 +1,42 @@
+/*
+ * Shared base theme for every NoteForWork app: self-hosted fonts (no runtime requests to
+ * Google — important on PHI pages), brand tokens and base typography matching the live site.
+ * Usage in an app's globals.css:  @import 'tailwindcss'; @import '@nfw/ui/theme.css';
+ */
+@import '@fontsource-variable/dm-sans/wght.css';
+@import '@fontsource/instrument-serif/400.css';
+@import '@fontsource/instrument-serif/400-italic.css';
+@import './tokens.css';
+
+html {
+  color-scheme: light;
+  scroll-behavior: smooth;
+}
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Headings: Instrument Serif, bold with tight tracking (as on the live site). */
+.font-display,
+h1.display,
+h2.display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Small uppercase section label ("OUR MEDICAL TEAM"). */
+.eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-green);
+}
+
+/* Hero background: soft green glow from the top. */
+.hero-glow {
+  background-image: radial-gradient(100% 70% at 50% -10%, var(--color-green-glow) 0%, transparent 65%);
+}

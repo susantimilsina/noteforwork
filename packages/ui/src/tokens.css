@@ -1,0 +1,22 @@
+/*
+ * NoteForWork brand tokens — matched to the live site (computed styles, 2026-10-05).
+ * Light theme only, like the original. Consumed by Tailwind v4 via @theme.
+ */
+@theme {
+  --color-green: #1a7a4a;
+  --color-green-mid: #2da863;
+  --color-green-light: #e8f5ee;
+  --color-green-glow: #cceedd;
+  --color-ink: #0f1a14;
+  --color-cream: #f8faf8;
+  --color-muted: #5f7269;
+  --color-border: #dde8e2;
+  --color-surface: #ffffff;
+  --color-warn: #b45309;
+  --color-warn-light: #fef3c7;
+  --color-danger: #b91c1c;
+  --color-danger-light: #fee2e2;
+
+  --font-sans: 'DM Sans Variable', 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
+}

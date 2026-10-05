@@ -1,0 +1,309 @@
+// NoteForWork v2 — see docs/02-architecture.md §6.
+// PHI columns are marked /// PHI. Phase 1 stores them in plain columns on an encrypted volume;
+// app-level envelope encryption (KMS) is added before any real patient data (Phase 2).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Reference data ─────────────
+
+model State {
+  code     String  @id // "CA", "DC"
+  name     String
+  timeZone String
+  enabled  Boolean @default(false)
+  licenses License[]
+}
+
+// ───────────── People ─────────────
+
+enum Role {
+  PATIENT
+  PHYSICIAN
+  ADMIN
+  SUPPORT
+}
+
+/// Auth identity (Better Auth tables are added in the auth step; this links roles to them).
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  role      Role
+  createdAt DateTime   @default(now())
+  patient   Patient?
+  physician Physician?
+}
+
+model Patient {
+  id        String   @id @default(uuid())
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+  email     String   @unique /// PHI (lower-cased)
+  firstName String /// PHI
+  lastName  String /// PHI
+  dob       DateTime @db.Date /// PHI
+  phone     String? /// PHI
+  createdAt DateTime @default(now())
+  intakes   Intake[]
+}
+
+model Physician {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  displayName String // "Chihui Yuan"
+  degree      Degree
+  npi         String    @unique
+  specialties String[]
+  languages   String[]
+  bio         String?
+  active      Boolean   @default(true)
+  licenses    License[]
+  shifts      Shift[]
+  reviews     Review[]
+  notes       Note[]
+}
+
+enum Degree {
+  MD
+  DO
+  NP
+}
+
+model License {
+  id          String    @id @default(uuid())
+  physicianId String
+  physician   Physician @relation(fields: [physicianId], references: [id])
+  stateCode   String
+  state       State     @relation(fields: [stateCode], references: [code])
+  number      String
+  expiresAt   DateTime  @db.Date
+  verifiedAt  DateTime?
+  notes       Note[]
+
+  @@unique([stateCode, number])
+  @@index([physicianId])
+}
+
+model Shift {
+  id          String    @id @default(uuid())
+  physicianId String
+  physician   Physician @relation(fields: [physicianId], references: [id])
+  startsAt    DateTime
+  endsAt      DateTime
+
+  @@index([startsAt, endsAt])
+}
+
+// ───────────── Intake lifecycle ─────────────
+
+enum IntakeStatus {
+  DRAFT
+  SCREEN_BLOCKED
+  SCREEN_PASSED
+  DETAILS_COMPLETE
+  PAYMENT_AUTHORIZED
+  IN_QUEUE
+  IN_REVIEW
+  APPROVED
+  NOTE_ISSUED
+  DECLINED
+  CANCELLED
+  EXPIRED
+}
+
+model Intake {
+  id           String        @id @default(uuid())
+  publicRef    String        @unique // REQ-XXXX-XXXX, server CSPRNG
+  accessTokenHash String     @unique // sha256 of the httpOnly intake cookie; scopes anonymous access to this draft
+  status       IntakeStatus  @default(DRAFT)
+  patientId    String?
+  patient      Patient?      @relation(fields: [patientId], references: [id])
+  stateCode    String // attested physical location
+  locationAttestedAt DateTime
+  ipGeoState   String? // server-side lookup, compliance monitoring only
+  absenceStart DateTime?     @db.Date
+  absenceEnd   DateTime?     @db.Date
+  patientNotes String? /// PHI
+  guardianName String? /// PHI — required when patient < 18
+  guardianRelationship String?
+  submittedAt  DateTime? // payment authorized → SLA clock starts
+  slaDeadline  DateTime?
+  expiresAt    DateTime? // unpaid drafts are purged after this
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  consent   ConsentRecord?
+  screening ScreeningResult?
+  payment   Payment?
+  review    Review?
+  note      Note?
+
+  @@index([status, slaDeadline])
+  @@index([expiresAt])
+}
+
+model ConsentRecord {
+  id              String   @id @default(uuid())
+  intakeId        String   @unique
+  intake          Intake   @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  documentKey     String // "telehealth-consent"
+  documentVersion String // "2026-05-01"
+  language        String   @default("en") // language of the text the patient read
+  acceptedAt      DateTime @default(now())
+  ipAddress       String
+  userAgent       String
+}
+
+enum ScreeningOutcome {
+  ELIGIBLE
+  BLOCKED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+}
+
+model ScreeningResult {
+  id             String           @id @default(uuid())
+  intakeId       String           @unique
+  intake         Intake           @relation(fields: [intakeId], references: [id], onDelete: Cascade)
+  rulesetVersion String
+  answers        Json /// PHI
+  outcome        ScreeningOutcome
+  riskLevel      RiskLevel
+  riskScore      Int
+  blockReason    String?
+  computedAt     DateTime         @default(now())
+}
+
+enum PaymentStatus {
+  REQUIRES_PAYMENT
+  AUTHORIZED
+  CAPTURED
+  VOIDED
+  REFUNDED
+  FAILED
+}
+
+model Payment {
+  id                    String        @id @default(uuid())
+  intakeId              String        @unique
+  intake                Intake        @relation(fields: [intakeId], references: [id])
+  stripePaymentIntentId String        @unique
+  amountCents           Int // from server price config, never from the client
+  currency              String        @default("usd")
+  status                PaymentStatus
+  capturedAt            DateTime?
+  voidedAt              DateTime?
+  refundedAt            DateTime?
+  refundReason          String? // SLA_MISSED | EMPLOYER_REJECTED | ADMIN
+  createdAt             DateTime      @default(now())
+}
+
+enum ReviewDecision {
+  APPROVED
+  DECLINED
+}
+
+model Review {
+  id            String          @id @default(uuid())
+  intakeId      String          @unique
+  intake        Intake          @relation(fields: [intakeId], references: [id])
+  physicianId   String
+  physician     Physician       @relation(fields: [physicianId], references: [id])
+  claimedAt     DateTime        @default(now())
+  decision      ReviewDecision?
+  declineReason String?
+  clinicalNote  String? /// PHI — internal, never printed on the note
+  attestation   String?
+  decidedAt     DateTime?
+}
+
+// ───────────── Notes & verification ─────────────
+
+enum IssuingEntity {
+  NOTEFORWORK
+  ANYDAY_MEDICAL_CLINIC
+}
+
+enum NoteStatus {
+  VALID
+  CORRECTED
+  REVOKED
+}
+
+model Note {
+  id           String        @id @default(uuid())
+  intakeId     String?       @unique // null for legacy imports without an intake
+  intake       Intake?       @relation(fields: [intakeId], references: [id])
+  noteId       String        @unique // NFW-XXXX-XXXX-XXXX
+  qrTokenHash  String        @unique // sha256 of the QR token; the token itself is never stored
+  issuingEntity IssuingEntity
+  physicianId  String
+  physician    Physician     @relation(fields: [physicianId], references: [id])
+  licenseId    String
+  license      License       @relation(fields: [licenseId], references: [id])
+  patientDisplayName String /// PHI — "Test P." as shown to verifiers
+  absenceStart DateTime      @db.Date
+  absenceEnd   DateTime      @db.Date
+  pdfKey       String? // S3 object key
+  status       NoteStatus    @default(VALID)
+  supersedesId String?       @unique
+  supersedes   Note?         @relation("Correction", fields: [supersedesId], references: [id])
+  supersededBy Note?         @relation("Correction")
+  issuedAt     DateTime      @default(now())
+  deliveredAt  DateTime?
+  legacy       Boolean       @default(false) // imported from DrapCode
+  legacyRef    String?       @unique // original DrapCode ID (NW-…/NFW-…)
+  verifications VerificationEvent[]
+  refundRequests RefundRequest[]
+}
+
+model VerificationEvent {
+  id          String   @id @default(uuid())
+  noteId      String?
+  note        Note?    @relation(fields: [noteId], references: [id])
+  queryHash   String
+  result      String // FOUND | NOT_FOUND | RATE_LIMITED
+  ipHash      String
+  at          DateTime @default(now())
+
+  @@index([at])
+}
+
+model RefundRequest {
+  id         String    @id @default(uuid())
+  noteId     String
+  note       Note      @relation(fields: [noteId], references: [id])
+  reason     String
+  details    String?
+  status     String    @default("OPEN") // OPEN | APPROVED | REJECTED
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+}
+
+// ───────────── Audit ─────────────
+
+model AuditEvent {
+  id        BigInt   @id @default(autoincrement())
+  actorType String // PATIENT | PHYSICIAN | ADMIN | SYSTEM | PUBLIC
+  actorId   String?
+  action    String // e.g. intake.consent.accepted, note.verified
+  entity    String
+  entityId  String
+  meta      Json     @default("{}")
+  at        DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([at])
+}

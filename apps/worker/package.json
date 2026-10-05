@@ -1,0 +1,27 @@
+{
+  "name": "@nfw/worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Background jobs (BullMQ): draft purge now; SLA timers, PDF rendering, email, paging later.",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup src/main.ts --format cjs --clean",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nfw/db": "workspace:*",
+    "bullmq": "^6.3.11",
+    "dotenv": "^17.2.0",
+    "ioredis": "^6.0.0"
+  },
+  "devDependencies": {
+    "@nfw/config": "workspace:*",
+    "@types/node": "^22",
+    "tsup": "^8.5.0",
+    "tsx": "^4.23.0",
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.3"
+  }
+}
