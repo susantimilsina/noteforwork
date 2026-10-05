@@ -23,7 +23,8 @@
     "migrate:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio",
-    "typecheck": "prisma generate && tsc --noEmit"
+    "typecheck": "prisma generate && tsc --noEmit",
+    "seed:demo": "tsx prisma/seed-demo.ts"
   },
   "dependencies": {
     "@nfw/schemas": "workspace:*",

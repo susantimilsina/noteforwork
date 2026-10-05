@@ -34,12 +34,33 @@ enum Role {
 
 /// Auth identity (Better Auth tables are added in the auth step; this links roles to them).
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  role      Role
-  createdAt DateTime   @default(now())
-  patient   Patient?
-  physician Physician?
+  id           String         @id @default(uuid())
+  email        String         @unique
+  role         Role
+  /// scrypt hash ("scrypt$N$r$p$salt$hash"). Staff only; patients sign in with email codes.
+  passwordHash String?
+  displayName  String?
+  disabled     Boolean        @default(false)
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  patient      Patient?
+  physician    Physician?
+  sessions     StaffSession[]
+}
+
+/// Staff (admin/support/physician) login sessions. The cookie holds a random token; only its hash is stored.
+model StaffSession {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+  ipAddress  String
+  userAgent  String
+
+  @@index([userId])
 }
 
 model Patient {

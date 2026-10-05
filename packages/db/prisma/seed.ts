@@ -5,7 +5,7 @@
 import path from 'node:path';
 import { config } from 'dotenv';
 import { US_STATES } from '@nfw/schemas';
-import { createPrismaClient } from '../src/index.js';
+import { createPrismaClient, hashPassword } from '../src/index.js';
 
 config({ path: path.resolve(import.meta.dirname, '../../../.env'), quiet: true });
 
@@ -50,7 +50,24 @@ async function main() {
     create: { physicianId: physician.id, stateCode: 'CA', number: 'TEST-0001', expiresAt: new Date('2030-12-31') },
   });
 
-  console.log(`Seeded ${US_STATES.length} states (${ENABLED.size} enabled) and 1 test physician.`);
+  // Local admin login for the staff panel. Credentials come from the git-ignored .env
+  // (ADMIN_EMAIL / ADMIN_PASSWORD) — never commit real staff passwords.
+  const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (adminEmail && adminPassword) {
+    if (adminPassword.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters');
+    const passwordHash = await hashPassword(adminPassword);
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { passwordHash, role: 'ADMIN', disabled: false },
+      create: { email: adminEmail, role: 'ADMIN', passwordHash, displayName: 'Local Admin' },
+    });
+  }
+
+  console.log(
+    `Seeded ${US_STATES.length} states (${ENABLED.size} enabled), 1 test physician` +
+      (adminEmail && adminPassword ? `, admin user ${adminEmail}.` : '. (Set ADMIN_EMAIL/ADMIN_PASSWORD in .env to create an admin login.)'),
+  );
 }
 
 main()
